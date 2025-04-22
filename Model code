@@ -1,0 +1,636 @@
+>> import cv2
+import numpy as np
+import pyaudio
+import scipy.signal
+import time
+
+# Constants
+SIREN_THRESHOLD = 0.5  # Adjust based on siren detection sensitivity
+IMAGE_WIDTH = 640
+IMAGE_HEIGHT = 480
+LANE_DIVIDER = IMAGE_WIDTH // 2  # Assuming a 4-lane road divided by a center divider
+
+# Initialize OpenCV for image capture
+cap = cv2.VideoCapture(0)
+cap.set(3, IMAGE_WIDTH)
+cap.set(4, IMAGE_HEIGHT)
+
+# Initialize PyAudio for audio capture
+p = pyaudio.PyAudio()
+stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
+
+def detect_siren(audio_data):
+    # Simple FFT-based siren detection
+    fft_data = np.fft.fft(audio_data)
+    frequencies = np.fft.fftfreq(len(fft_data), 1/44100)
+    dominant_freq = np.abs(frequencies[np.argmax(np.abs(fft_data))])
+    
+    # Siren frequency range (adjust based on actual siren frequency)
+    if 800 <= dominant_freq <= 1200:
+        return True
+    return False
+
+def detect_ambulance(image):
+    # Simple color-based ambulance detection (assuming red and white colors)
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    
+    # Define range for red color
+    lower_red = np.array([0, 50, 50])
+    upper_red = np.array([10, 255, 255])
+    mask_red = cv2.inRange(hsv, lower_red, upper_red)
+    
+    # Define range for white color
+    lower_white = np.array([0, 0, 200])
+    upper_white = np.array([180, 30, 255])
+    mask_white = cv2.inRange(hsv, lower_white, upper_white)
+    
+    # Combine masks
+    mask = cv2.bitwise_or(mask_red, mask_white)
+    
+    # Find contours
+    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for contour in contours:
+        if cv2.contourArea(contour) > 500:  # Adjust based on ambulance size in image
+            return True
+    return False
+
+def prioritize_ambulance(ambulance_positions):
+    # Prioritize the ambulance closest to the traffic signal
+    if not ambulance_positions:
+return None
+    return min(ambulance_positions, key=lambda x: abs(x - LANE_DIVIDER))
+
+def control_traffic_signal(ambulance_detected, siren_detected, ambulance_position):
+    if ambulance_detected and siren_detected:
+        print("Ambulance detected with siren. Turning traffic signal green.")
+        # Simulate turning traffic signal green
+        # Implement hardware control here if needed
+    elif ambulance_detected:
+        print("Ambulance detected without siren. Checking priority.")
+        if ambulance_position is not None:
+            print(f"Prioritizing ambulance at position {ambulance_position}. Turning traffic signal green.")
+            # Simulate turning traffic signal green
+            # Implement hardware control here if needed
+    else:
+        print("No ambulance detected. Keeping traffic signal red.")
+
+def main():
+    while True:
+        # Capture image
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # Capture audio
+        audio_data = np.frombuffer(stream.read(1024), dtype=np.int16)
+        
+        # Detect ambulance
+        ambulance_detected = detect_ambulance(frame)
+        
+        # Detect siren
+        siren_detected = detect_siren(audio_data)
+        
+        # Get ambulance position (simplified as x-coordinate)
+        ambulance_position = None
+        if ambulance_detected:
+            ambulance_position = IMAGE_WIDTH // 2  # Simplified position for demonstration
+        
+        # Control traffic signal
+        control_traffic_signal(ambulance_detected, siren_detected, ambulance_position)
+        
+        # Display image (for debugging)
+        cv2.imshow('Traffic Camera', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        
+        # Sleep to simulate real-time processing
+        time.sleep(0.1)
+
+    # Release resources
+    cap.release()
+    cv2.destroyAllWindows()
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+if __name__ == "__main__":
+    main()
+>> % Generate a synthetic low-light image
+img = im2double(imread('peppers.png')); % Sample image
+img_dark = img * 0.2; % Simulate low-light by reducing brightness
+noise = 0.05 * randn(size(img_dark));
+img_noisy = img_dark + noise;
+img_noisy = max(0, min(img_noisy, 1)); % Clip to valid range
+
+% Enhance low-light image
+img_enhanced = imlocalbrighten(img_noisy, 'Alpha', 0.8);
+
+% Display results
+figure;
+subplot(1, 2, 1); imshow(img_noisy); title('Low-Light Input');
+subplot(1, 2, 2); imshow(img_enhanced); title('Enhanced Output');
+>> % Generate a synthetic low-res image
+img_lowres = imresize(im2double(imread('peppers.png')), 0.25);
+
+% Apply super-resolution (bicubic interpolation for demo)
+img_highres = imresize(img_lowres, 4, 'bicubic');
+
+% Display results
+figure;
+subplot(1, 2, 1); imshow(img_lowres); title('Low-Res Input (Distant Object)');
+subplot(1, 2, 2); imshow(img_highres); title('Super-Res Output');
+>> % Load a pretrained super-resolution network (requires Deep Learning Toolbox)
+if ~exist('superresNet', 'var')
+    try
+        superresNet = load('superResolutionNetwork.mat').net;
+    catch
+        % Download pretrained model if not available
+        disp('Downloading pretrained super-resolution model...');
+        websave('superResolutionNetwork.mat', 'https://ssd.mathworks.com/supportfiles/vision/data/superResolutionNetwork.mat');
+        superresNet = load('superResolutionNetwork.mat').net;
+    end
+end
+
+% Generate synthetic low-res image (from built-in MATLAB image)
+img_lowres = im2double(imresize(imread('peppers.png'), [64 64]));
+
+% Enhance using deep learning
+img_highres = superresNet.predict(img_lowres);
+% Compare results
+figure;
+subplot(1, 3, 1);
+imshow(img_lowres);
+title('Low-Res Input (64x64)');
+
+subplot(1, 3, 2);
+imshow(imresize(img_lowres, 4, 'bicubic'));
+title('Bicubic Upscaling');
+
+subplot(1, 3, 3);
+imshow(img_highres);
+title('Deep Learning Super-Resolution');
+Downloading pretrained super-resolution model...
+>> % Check if model exists, otherwise download
+if ~exist('net', 'var')
+    try
+        net = load('superresolutionNetwork.mat').net; % Try local file
+    catch
+        % Use MATLAB's pretrained model (requires Deep Learning Toolbox)
+        disp('Loading pretrained super-resolution model...');
+        net = superresnet; % Built-in lightweight model
+    end
+end
+
+% Generate synthetic low-res image
+img_lowres = im2double(imresize(imread('peppers.png'), [64 64]));
+
+% Super-resolve
+img_highres = imresize(img_lowres, 4, 'bicubic'); % Initial upscale
+if exist('net', 'var') % If model is available
+    img_highres = predict(net, img_highres); % Refine with DL
+end
+
+% Display comparison
+figure;
+subplot(1, 2, 1); imshow(img_lowres); title('Low-Res Input');
+subplot(1, 2, 2); imshow(img_highres); title('Super-Resolved');
+Loading pretrained super-resolution model...
+>> % Generate synthetic low-res image
+img_original = im2double(imread('peppers.png'));
+img_lowres = imresize(img_original, 0.25);
+
+% Edge-preserving super-resolution pipeline
+% Step 1: Noise reduction
+img_denoised = medfilt2(img_lowres, [3 3]);
+
+% Step 2: Sharpening
+img_sharpened = imsharpen(img_denoised, 'Radius', 1, 'Amount', 1.5);
+
+% Step 3: Advanced upscaling (Lanczos3)
+img_highres = imresize(img_sharpened, 4, 'lanczos3');
+
+% Step 4: Contrast enhancement
+img_final = localcontrast(img_highres, 0.3, 0.5);
+
+% Display results
+figure;
+subplot(1, 3, 1); imshow(img_lowres); title('Low-Res Input');
+subplot(1, 3, 2); imshow(img_highres); title('Upscaled');
+subplot(1, 3, 3); imshow(img_final); title('Enhanced');
+>> % Generate synthetic low-res COLOR image
+img_original = im2double(imread('peppers.png')); % RGB image
+img_lowres = imresize(img_original, 0.25);
+
+% Edge-preserving super-resolution pipeline
+% Step 1: Noise reduction (per color channel)
+img_denoised = zeros(size(img_lowres));
+for channel = 1:3
+    img_denoised(:,:,channel) = medfilt2(img_lowres(:,:,channel), [3 3]);
+end
+
+% Step 2: Sharpening (works directly on RGB)
+img_sharpened = imsharpen(img_denoised, 'Radius', 1, 'Amount', 1.5);
+
+% Step 3: Advanced upscaling (Lanczos3)
+img_highres = imresize(img_sharpened, 4, 'lanczos3');
+
+% Step 4: Contrast enhancement (using alternative method)
+img_final = img_highres;
+if license('test', 'image_toolbox')
+    % Use Image Processing Toolbox if available
+    img_final = localcontrast(img_highres);
+else
+    % Manual contrast stretch
+    for channel = 1:3
+        img_final(:,:,channel) = imadjust(img_highres(:,:,channel));
+    end
+end
+
+% Display results
+figure;
+subplot(1, 3, 1); imshow(img_lowres); title('Low-Res Input (96x96)');
+subplot(1, 3, 2); imshow(img_highres); title('Upscaled (384x384)');
+subplot(1, 3, 3); imshow(img_final); title('Enhanced Result');
+>> % Load built-in image (works in all MATLAB versions)
+img = im2double(imread('peppers.png'));
+
+% Create low-res version (for demonstration)
+img_lowres = imresize(img, 0.25);
+
+% SIMPLE BUT EFFECTIVE ENHANCEMENT PIPELINE
+% 1. Upscale using best available method
+if exist('imresize', 'file')
+    img_upscaled = imresize(img_lowres, 4, 'bicubic');
+else
+    % Fallback for very old MATLAB versions
+    img_upscaled = kron(img_lowres, ones(4, 4));
+end
+
+% 2. Basic contrast enhancement
+img_enhanced = img_upscaled;
+for c = 1:3  % Process each color channel
+    channel = img_upscaled(:,:,c);
+    img_enhanced(:,:,c) = (channel - min(channel(:))) ./ (max(channel(:)) - min(channel(:)));
+end
+
+% 3. Mild sharpening (if function exists)
+if exist('imsharpen', 'file')
+    img_enhanced = imsharpen(img_enhanced, 'Amount', 0.8);
+end
+
+% Display results
+figure;
+subplot(1,2,1); imshow(img_lowres); title('Low-Res Input');
+subplot(1,2,2); imshow(img_enhanced); title('Enhanced Output');
+fprintf('Successfully processed image!\n');
+Successfully processed image!
+>> % Load built-in image (works in all MATLAB versions)
+img = im2double(imread('peppers.png'));
+
+% Create low-res version (for demonstration)
+img_lowres = imresize(img, 0.25);
+
+% SIMPLE BUT EFFECTIVE ENHANCEMENT PIPELINE
+% 1. Upscale using best available method
+if exist('imresize', 'file')
+    img_upscaled = imresize(img_lowres, 4, 'bicubic');
+else
+    % Fallback for very old MATLAB versions
+    img_upscaled = kron(img_lowres, ones(4, 4));
+end
+
+% 2. Basic contrast enhancement
+img_enhanced = img_upscaled;
+for c = 1:3  % Process each color channel
+    channel = img_upscaled(:,:,c);
+    img_enhanced(:,:,c) = (channel - min(channel(:))) ./ (max(channel(:)) - min(channel(:)));
+end
+
+% 3. Mild sharpening (if function exists)
+if exist('imsharpen', 'file')
+    img_enhanced = imsharpen(img_enhanced, 'Amount', 0.8);
+end
+
+% Display results
+figure;
+subplot(1,2,1); imshow(img_lowres); title('Low-Res Input');
+subplot(1,2,2); imshow(img_enhanced); title('Enhanced Output');
+fprintf('Successfully processed image!\n');
+Successfully processed image!
+>> % ===== STEP 1: Generate Synthetic Test Image =====
+try
+    % Use built-in image if available
+    img = im2double(imread('peppers.png')); 
+catch
+    % Create synthetic image if peppers.png fails
+    img = rand(256, 256, 3) * 0.3; % Dark synthetic image
+    img(100:150, 100:150, :) = 0.8; % Add bright square
+end
+
+% ===== STEP 2: Create Degraded Input =====
+img_lowres = imresize(img, 0.25); % Reduce resolution
+img_dark = img_lowres * 0.3;      % Simulate low-light
+
+% ===== STEP 3: Enhancement Pipeline =====
+% A. Low-Light Enhancement
+img_bright = img_dark * 3.5; % Simple brightness boost
+img_bright = min(img_bright, 1); % Clip to valid range
+
+% B. Super-Resolution
+if exist('imresize', 'file')
+    img_highres = imresize(img_bright, 4, 'lanczos3');
+else
+    % Fallback method
+    [h,w,~] = size(img_bright);
+    img_highres = zeros(h*4, w*4, 3);
+    for c = 1:3
+        img_highres(:,:,c) = kron(img_bright(:,:,c), ones(4));
+    end
+end
+
+% C. Sharpening
+if exist('imsharpen', 'file')
+img_final = imsharpen(img_highres, 'Amount', 0.5);
+else
+    % Manual sharpening kernel
+    kernel = [0 -0.25 0; -0.25 2 -0.25; 0 -0.25 0];
+    img_final = imfilter(img_highres, kernel);
+end
+
+% ===== STEP 4: Validation & Display =====
+figure;
+subplot(2,2,1); imshow(img); title('Original Image');
+subplot(2,2,2); imshow(img_dark); title('Degraded Input (Dark+LowRes)');
+subplot(2,2,3); imshow(img_highres); title('After Enhancement');
+subplot(2,2,4); imshow(img_final); title('Final Sharpened');
+
+% ===== STEP 5: Quality Metrics =====
+if exist('immse', 'file')
+    original_highres = imresize(img, size(img_final));
+    mse = immse(original_highres, img_final);
+    psnr = 10*log10(1/mse);
+    fprintf('Quality Metrics:\nMSE: %.2f\nPSNR: %.2f dB\n', mse, psnr);
+end
+>> % ===== STEP 1: Generate Synthetic Test Image =====
+try
+    img = im2double(imread('peppers.png')); 
+catch
+    % Create synthetic color image if peppers.png fails
+    [X,Y] = meshgrid(1:256,1:256);
+    img = zeros(256,256,3);
+    img(:,:,1) = 0.5 + 0.3*sin(X/20);  % Red channel
+    img(:,:,2) = 0.4 + 0.3*cos(Y/25);  % Green channel
+    img(:,:,3) = 0.6 - 0.2*cos(X/15);  % Blue channel
+end
+
+% ===== STEP 2: Create Degraded Input (FIXED RESIZE) =====
+% Correct way to specify output size
+target_size = round(size(img,1:2)*0.25);  % 1-by-2 vector
+img_lowres = imresize(img, target_size);  % Proper resize syntax
+
+% Simulate low-light
+img_dark = img_lowres * 0.3;
+
+% ===== STEP 3: Enhancement Pipeline =====
+% A. Low-Light Enhancement (Fixed)
+img_bright = min(img_dark * 3.5, 1);  % Brighten with clipping
+
+% B. Super-Resolution (Fixed)
+upscale_factor = 4;
+output_size = size(img_bright,1:2)*upscale_factor;
+try
+    img_highres = imresize(img_bright, output_size, 'lanczos3');
+catch
+    % Fallback method
+    img_highres = kron(img_bright, ones(upscale_factor));
+end
+
+% C. Sharpening (Robust)
+try
+    img_final = imsharpen(img_highres, 'Amount', 0.5);
+catch
+    % Manual sharpening
+    kernel = [0 -0.25 0; -0.25 2 -0.25; 0 -0.25 0];
+    img_final = imfilter(img_highres, kernel);
+% ===== STEP 4: Display Results =====
+figure;
+subplot(2,2,1); imshow(img); title('Original');
+subplot(2,2,2); imshow(img_dark); title('Degraded (Dark+LowRes)');
+subplot(2,2,3); imshow(img_highres); title('Enhanced');
+subplot(2,2,4); imshow(img_final); title('Final Sharpened');
+
+disp('Pipeline completed successfully!');
+Pipeline completed successfully!
+>> % ===== 1. Load/Create Image =====
+try
+    img = im2double(imread('peppers.png'));
+catch
+    % Create synthetic HDR-like test image
+    [X,Y] = meshgrid(1:512);
+    img = zeros(512,512,3);
+    img(:,:,1) = 0.6 + 0.3*sin(X/30) .* cos(Y/40); % Red
+    img(:,:,2) = 0.5 + 0.4*cos((X+Y)/50);          % Green
+    img(:,:,3) = 0.7 - 0.2*sin(X/25);              % Blue
+end
+
+% ===== 2. Simulate Real-World Degradation =====
+target_size = max(round(size(img,1:2)/4), 16); % Prevent too small
+img_lowres = imresize(img, target_size);
+img_dark = img_lowres.^1.8; % Gamma to simulate low-light
+img_noisy = imnoise(img_dark, 'gaussian', 0, 0.01); % Add noise
+
+% ===== 3. ADVANCED ENHANCEMENT PIPELINE =====
+% A. Smart Noise Reduction (Edge-Preserving)
+denoised = zeros(size(img_noisy));
+for c = 1:3
+    denoised(:,:,c) = medfilt2(img_noisy(:,:,c), [5 5]);
+end
+
+% B. Adaptive Histogram Equalization (CLAHE)
+if exist('adapthisteq', 'file')
+    enhanced = zeros(size(denoised));
+    for c = 1:3
+        enhanced(:,:,c) = adapthisteq(denoised(:,:,c), 'ClipLimit', 0.02);
+    end
+else
+    enhanced = denoised * 2.5; % Fallback
+end
+
+% C. Edge-Aware Super-Resolution
+upscale_factor = 4;
+if exist('imresize', 'file')
+    img_hr = imresize(enhanced, upscale_factor, 'lanczos3');
+else
+    img_hr = kron(enhanced, ones(upscale_factor));
+end
+
+% D. Frequency-Domain Sharpening
+[rows,cols,~] = size(img_hr);
+[X,Y] = meshgrid(-cols/2:cols/2-1, -rows/2:rows/2-1);
+highpass = 1 - exp(-(X.^2 + Y.^2)/(2*(rows/8)^2)); % Gaussian HPF
+sharpened = zeros(size(img_hr));
+for c = 1:3
+    channel_fft = fftshift(fft2(img_hr(:,:,c)));
+    sharpened(:,:,c) = real(ifft2(ifftshift(channel_fft .* (1 + 0.5*highpass))));
+end
+
+% ===== 4. Display =====
+figure('Position', [100 100 1200 600]);
+subplot(2,3,1); imshow(img); title('Original');
+subplot(2,3,2); imshow(img_noisy); title('Degraded (Noisy+Dark+LowRes)');
+subplot(2,3,3); imshow(denoised); title('Denoised');
+subplot(2,3,4); imshow(enhanced); title('Contrast Enhanced');
+subplot(2,3,5); imshow(img_hr); title('Super-Resolved');
+subplot(2,3,6); imshow(sharpened); title('Final Sharpened');
+
+% ===== 5. Quality Metrics =====
+if exist('ssim', 'file')
+    original_hr = imresize(img, size(sharpened));
+    ssim_val = ssim(sharpened, original_hr);
+    fprintf('SSIM: %.3f (1 = perfect)\n', ssim_val);
+end
+>> % ===== 1. Load/Create Image =====
+try
+    img = im2double(imread('peppers.png'));
+catch
+    % Create synthetic HDR test image
+    [X,Y] = meshgrid(1:512);
+    img = zeros(512,512,3);
+    img(:,:,1) = 0.6 + 0.3*sin(X/30).*cos(Y/40); % Red
+    img(:,:,2) = 0.5 + 0.4*cos((X+Y)/50);        % Green
+    img(:,:,3) = 0.7 - 0.2*sin(X/25);            % Blue
+end
+
+% ===== 2. Simulate Real-World Degradation =====
+target_size = max(round(size(img,1:2)/4), 16);
+img_lowres = imresize(img, target_size);
+img_dark = img_lowres.^1.8; % Gamma correction
+img_noisy = imnoise(img_dark, 'gaussian', 0, 0.01);
+
+% ===== 3. ERROR-PROOF ENHANCEMENT PIPELINE =====
+% A. Robust Noise Reduction (Fixed)
+denoised = zeros(size(img_noisy));
+for c = 1:3
+    channel = img_noisy(:,:,c);
+    % Ensure real values only for medfilt2
+    denoised(:,:,c) = medfilt2(real(channel), [3 3]); 
+end
+
+% B. Adaptive Contrast Enhancement
+if exist('adapthisteq', 'file')
+    enhanced = zeros(size(denoised));
+    for c = 1:3
+        enhanced(:,:,c) = adapthisteq(denoised(:,:,c), 'ClipLimit', 0.02);
+    end
+else
+    % Fallback: Gamma correction + stretching
+    enhanced = 1.5 * denoised.^0.7;
+    enhanced = enhanced - min(enhanced(:));
+    enhanced = enhanced / max(enhanced(:));
+end
+
+% C. Edge-Aware Super-Resolution
+upscale_factor = 4;
+if exist('imresize', 'file')
+    img_hr = imresize(enhanced, upscale_factor, 'lanczos3');
+else
+    img_hr = kron(enhanced, ones(upscale_factor));
+end
+
+% D. Safe Sharpening
+try
+    sharpened = imsharpen(img_hr, 'Amount', 0.8, 'Threshold', 0.05);
+catch
+    % Manual unsharp masking
+    blurred = imgaussfilt(img_hr, 2);
+    sharpened = img_hr + 0.5*(img_hr - blurred);
+end
+
+% ===== 4. Professional Visualization =====
+figure('Position', [100 100 1200 600]);
+montage({img, img_noisy, denoised, enhanced, img_hr, sharpened}, ...
+        'Size', [2 3], 'BorderSize', [5 5]);
+title('Original | Degraded | Denoised | Enhanced | Super-Res | Final');
+
+% ===== 5. Quality Assurance =====
+if exist('immse', 'file')
+    original_hr = imresize(img, size(sharpened));
+    mse = immse(sharpened, original_hr);
+    fprintf('Quality Metrics:\nMSE: %.4f\n', mse);
+end
+>> % ===== 1. Load/Create Image =====
+try
+    img = im2double(imread('peppers.png'));
+catch
+    % Create guaranteed-real synthetic image
+    [X,Y] = meshgrid(1:512);
+    img = zeros(512,512,3,'double');
+    img(:,:,1) = 0.6 + 0.3*sin(X/30).*cos(Y/40);
+    img(:,:,2) = 0.5 + 0.4*cos((X+Y)/50);
+    img(:,:,3) = 0.7 - 0.2*sin(X/25);
+    img = max(0,min(img,1)); % Ensure valid range
+end
+
+% ===== 2. Simulate Degradation =====
+target_size = max(floor(size(img,1:2)/4), [16 16]); % Enforce 1x2 vector
+img_lowres = imresize(img, target_size);
+img_dark = max(0, min(img_lowres.^1.8, 1)); % Gamma with clamping
+img_noisy = imnoise(img_dark, 'gaussian', 0, 0.01);
+
+% ===== 3. Professional Enhancement Pipeline =====
+% A. Guaranteed-Real Denoising
+denoised = zeros(size(img_noisy),'double');
+for c = 1:3
+    channel = real(img_noisy(:,:,c)); % Force real numbers
+    denoised(:,:,c) = medfilt2(channel, [3 3]);
+end
+
+% B. Safe Contrast Enhancement
+enhanced = zeros(size(denoised),'double');
+for c = 1:3
+    channel = denoised(:,:,c);
+    if exist('adapthisteq','file')
+        enhanced(:,:,c) = adapthisteq(channel, 'ClipLimit',0.02);
+    else
+        enhanced(:,:,c) = imadjust(channel);
+    end
+end
+
+% C. Error-Proof Super-Resolution
+upscale_factor = 4;
+output_size = size(enhanced,[1 2])*upscale_factor;
+if exist('imresize','file')
+    img_hr = imresize(enhanced, output_size, 'lanczos3');
+else
+    img_hr = kron(enhanced, ones(upscale_factor));
+end
+% D. Professional Sharpening
+sharpened = zeros(size(img_hr),'double');
+for c = 1:3
+    channel = img_hr(:,:,c);
+    if exist('imsharpen','file')
+        sharpened(:,:,c) = imsharpen(channel,'Amount',0.8,'Threshold',0.05);
+    else
+        blurred = imgaussfilt(channel,1);
+        sharpened(:,:,c) = min(max(channel + 0.7*(channel - blurred),0),1);
+    end
+end
+
+% ===== 4. Bulletproof Visualization =====
+% Convert all images to guaranteed-real, valid-range RGB
+display_set = {img, img_noisy, denoised, enhanced, img_hr, sharpened};
+display_set = cellfun(@(x) real(max(0,min(x,1))), display_set, 'UniformOutput',false);
+
+figure('Position',[100 100 1200 600]);
+montage(display_set, 'Size',[2 3], 'BorderSize',[5 5], 'BackgroundColor','w');
+title('Processing Pipeline: Original → Degraded → Denoised → Enhanced → Super-Res → Final');
+
+% ===== 5. Quality Metrics =====
+if exist('ssim','file')
+    original_hr = imresize(img, size(sharpened,[1 2]));
+    ssim_val = ssim(sharpened, original_hr);
+    fprintf('Quality Metric:\nSSIM: %.3f (1.0 = perfect)\n',ssim_val);
+end
+Quality Metric:
+SSIM: 0.459 (1.0 = perfect)
+end
